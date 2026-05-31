@@ -436,8 +436,10 @@ footer{background:var(--espresso);padding:36px 5%;display:flex;justify-content:s
   <div id="admin-panel">
     <div class="admin-topbar">
       <div class="admin-topbar-brand">Panel Admin<small>LA FLAUTA BCN</small></div>
-      <div style="display:flex;align-items:center;gap:12px">
-        <span id="sync-badge" class="sync-badge sync-ok">✓ Sincronizado</span>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span id="sync-badge" class="sync-badge sync-ok">✓ Sheets</span>
+        <button onclick="downloadIndexHtml()" style="background:var(--kraft);color:var(--espresso);border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;transition:all .2s" onmouseover="this.style.background='#b8914a'" onmouseout="this.style.background='var(--kraft)'">⬇ Descargar index.html</button>
+        <span id="publish-badge" class="sync-badge sync-ok">✓ Llest</span>
         <button class="admin-close" onclick="closeAdmin()">✕</button>
       </div>
     </div>
@@ -619,11 +621,63 @@ const DEFAULT_PW = 'flauta2024';
 let siteData = loadSiteData();
 
 function loadSiteData() {
+  // Priority: 1) window.__SITE_DATA__ (injected by GitHub publish)
+  //           2) localStorage (local edits)
+  //           3) default data
   try {
+    if(window.__SITE_DATA__) {
+      // Also save to localStorage for offline use
+      try { localStorage.setItem('lfb_site', JSON.stringify(window.__SITE_DATA__)); } catch(e) {}
+      return window.__SITE_DATA__;
+    }
     const s = localStorage.getItem('lfb_site');
     if(s) return JSON.parse(s);
   } catch(e) {}
   return getDefaultSiteData();
+}
+
+// ══════════════════════════════════════════
+// DESCARGAR index.html ACTUALITZAT
+// ══════════════════════════════════════════
+function downloadIndexHtml() {
+  setPublishBadge('publishing');
+
+  // Agafa el HTML actual de la pàgina
+  let updatedHtml = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+
+  // Elimina qualsevol __SITE_DATA__ antic injectat
+  updatedHtml = updatedHtml.replace(/<script id="__site_data__">[\s\S]*?<\/script>\s*/g, '');
+
+  // Injecta les dades actuals abans de </body>
+  const dataScript = '<script id="__site_data__">\nwindow.__SITE_DATA__ = '
+    + JSON.stringify(siteData) + ';\n<\/script>';
+  updatedHtml = updatedHtml.replace('</body>', dataScript + '\n</body>');
+
+  // Descarrega com index.html
+  const blob = new Blob([updatedHtml], {type: 'text/html;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'index.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+
+  setPublishBadge('ok');
+  setTimeout(()=>setPublishBadge('idle'), 4000);
+  toast('index.html descarregat — puja\'l a GitHub per publicar ✓');
+}
+
+function setPublishBadge(state) {
+  const el = document.getElementById('publish-badge');
+  if(!el) return;
+  const states = {
+    idle:       { cls:'sync-ok',  txt:'✓ Llest' },
+    publishing: { cls:'sync-ing', txt:'⬇ Generant...' },
+    ok:         { cls:'sync-ok',  txt:'✓ Descarregat!' },
+    err:        { cls:'sync-err', txt:'✗ Error' },
+  };
+  const s = states[state]||states.idle;
+  el.className = 'sync-badge '+s.cls;
+  el.textContent = s.txt;
 }
 
 function saveSiteData() {
