@@ -513,7 +513,7 @@ footer{background:var(--espresso);padding:36px 5%;display:flex;justify-content:s
         <div class="a-field"><div class="a-label">Cita destacada</div><textarea class="a-textarea" id="a-quote">"Llevamos Barcelona a Medellín, una flauta a la vez."</textarea></div>
         <div class="a-field"><div class="a-label">Párrafo 1</div><textarea class="a-textarea" id="a-hist1">Somos un obrador de autor nacido del amor por la tradición mediterránea y el producto artesano. Aquí conviven la técnica toscana del pan, la charcutería curada con paciencia y el mejor café de la Sierra Nevada colombiana.</textarea></div>
         <div class="a-field"><div class="a-label">Párrafo 2</div><textarea class="a-textarea" id="a-hist2">Nada de procesos industriales. Todo lo que ves en el mostrador ha pasado por nuestras manos ese mismo día.</textarea></div>
-        <div class="a-field"><div class="a-label">URL foto del obrador (opcional)</div><input class="a-input" id="a-hist-img" placeholder="https://... o déjalo vacío para usar el placeholder"></div>
+        <div id="hist-img-field-wrap"></div>
         <button class="a-btn a-btn-primary" onclick="saveHistoria()" style="margin-top:4px">Guardar y publicar</button>
       </div>
 
@@ -556,7 +556,7 @@ footer{background:var(--espresso);padding:36px 5%;display:flex;justify-content:s
         <div class="a-field"><div class="a-label">Subtítulo / lead</div><input class="a-input" id="a-carta-lead" value="Una selección honesta. Sin fritura industrial, sin conservantes, sin prisa."></div>
         <div class="a-divider"></div>
         <div class="a-section-title">Fotos de Instagram</div>
-        <p style="font-size:12px;color:var(--crust);margin-bottom:14px">Pega la URL directa de cada imagen (https://...). Si la dejas vacía, se muestra un placeholder.</p>
+        <p style="font-size:12px;color:var(--crust);margin-bottom:14px">Puja fotos des del teu disc dur (màx 1MB recomanat · comprimeix a <a href="https://squoosh.app" target="_blank" style="color:var(--terracota)">squoosh.app</a>). Si la deixes buida, surt un placeholder.</p>
         <div id="insta-admin"></div>
         <div class="a-divider"></div>
         <div class="a-section-title">Especiales</div>
@@ -678,6 +678,81 @@ function setPublishBadge(state) {
   const s = states[state]||states.idle;
   el.className = 'sync-badge '+s.cls;
   el.textContent = s.txt;
+}
+
+// ══════════════════════════════════════════
+// IMAGE UPLOAD HELPERS
+// ══════════════════════════════════════════
+function imageToBase64(file) {
+  return new Promise((resolve, reject) => {
+    if(!file) { reject('No file'); return; }
+    if(file.size > 2 * 1024 * 1024) {
+      alert(`La imatge "${file.name}" pesa ${(file.size/1024/1024).toFixed(1)}MB. Recomanem menys de 1MB. Comprimeix-la a squoosh.app i torna-ho a intentar.`);
+      reject('Too large'); return;
+    }
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result); // data:image/...;base64,...
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function buildImgField(id, currentVal, label, placeholder) {
+  const hasImg = currentVal && currentVal.length > 10;
+  return `<div class="img-field-wrap">
+    <div class="a-label">${label}</div>
+    ${hasImg
+      ? `<img src="${currentVal}" class="img-preview" id="prev-${id}">
+         <button class="img-clear-btn" onclick="clearImg('${id}')">✕ Treure foto</button>`
+      : `<div class="img-upload-area" id="area-${id}">
+          <input type="file" accept="image/*" onchange="handleImgUpload(this,'${id}')">
+          <div class="upload-icon">📷</div>
+          <div class="upload-label">${placeholder||'Clica o arrossega una foto'}</div>
+          <div class="upload-hint">JPG, PNG, WEBP · màx 1MB recomanat</div>
+        </div>`
+    }
+    <input type="hidden" id="${id}" value="${hasImg ? currentVal : ''}">
+  </div>`;
+}
+
+async function handleImgUpload(input, fieldId) {
+  const file = input.files[0];
+  if(!file) return;
+  try {
+    const b64 = await imageToBase64(file);
+    document.getElementById(fieldId).value = b64;
+    // Replace upload area with preview
+    const area = document.getElementById('area-'+fieldId);
+    if(area) {
+      const wrap = area.closest('.img-field-wrap');
+      const label = wrap.querySelector('.a-label').outerHTML;
+      wrap.innerHTML = label +
+        `<img src="${b64}" class="img-preview" id="prev-${fieldId}">
+         <button class="img-clear-btn" onclick="clearImg('${fieldId}')">✕ Treure foto</button>
+         <input type="hidden" id="${fieldId}" value="${b64}">`;
+    }
+  } catch(e) {
+    if(e !== 'Too large') console.error(e);
+  }
+}
+
+function clearImg(fieldId) {
+  const el = document.getElementById(fieldId);
+  if(el) el.value = '';
+  // Reload the admin form section to show upload area again
+  const prev = document.getElementById('prev-'+fieldId);
+  if(prev) {
+    const wrap = prev.closest('.img-field-wrap');
+    const label = wrap.querySelector('.a-label').outerHTML;
+    wrap.innerHTML = label +
+      `<div class="img-upload-area" id="area-${fieldId}">
+        <input type="file" accept="image/*" onchange="handleImgUpload(this,'${fieldId}')">
+        <div class="upload-icon">📷</div>
+        <div class="upload-label">Clica o arrossega una foto</div>
+        <div class="upload-hint">JPG, PNG, WEBP · màx 1MB recomanat</div>
+      </div>
+      <input type="hidden" id="${fieldId}" value="">`;
+  }
 }
 
 function saveSiteData() {
@@ -976,10 +1051,15 @@ function loadAdminForm() {
   const photos = (siteData.instagram&&siteData.instagram.photos)||['','','','',''];
   const instaAdmin = document.getElementById('insta-admin');
   if(instaAdmin) {
-    const placeholders=['🥖','🧀','☕','🥩','🎂'];
-    instaAdmin.innerHTML = photos.map((url,i)=>
-      `<div class="a-field"><div class="a-label">Foto ${i+1} ${placeholders[i]}</div><input class="a-input" id="ig-url-${i}" value="${url}" placeholder="https://..."></div>`
-    ).join('');
+    const placeholders=['🥖 Foto 1','🧀 Foto 2','☕ Foto 3','🥩 Foto 4','🎂 Foto 5'];
+    instaAdmin.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px">' +
+      photos.map((url,i) => buildImgField('ig-url-'+i, url, placeholders[i], 'Clica per pujar')).join('') +
+      '</div>';
+  }
+  // Historia image field
+  const histWrap = document.getElementById('hist-img-field-wrap');
+  if(histWrap) {
+    histWrap.innerHTML = buildImgField('a-hist-img', hist.imgUrl||'', 'Foto del obrador', 'Clica o arrossega la foto del local');
   }
   // Specials
   const sp = siteData.specials||{};
