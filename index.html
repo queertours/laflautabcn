@@ -978,7 +978,7 @@ function renderMenuPublic() {
       ${siteData.dishes.filter(d=>d.cat===c.id).map(d=>
         `<div class="menu-item">
           ${d.img
-            ? `<img class="menu-item-thumb" src="${d.img}" alt="${d.name}" onclick="openLightbox('${d.img}','${d.name.replace(/'/g,"\\'")}')">` 
+            ? `<img class="menu-item-thumb" src="${d.img}" alt="${d.name}" onclick="openLightbox(this.src,this.alt)">`
             : `<div class="menu-item-thumb-placeholder">🍽</div>`}
           <div style="flex:1">
             <div class="menu-item-name">${d.name}</div>
