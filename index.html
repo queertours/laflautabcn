@@ -81,6 +81,16 @@ section{padding:72px 5%}
 .menu-section.active{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
 .menu-item{background:#fff;border-radius:12px;padding:18px 20px;border:.5px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:14px;transition:box-shadow .2s}
 .menu-item:hover{box-shadow:0 4px 20px rgba(92,61,30,.1)}
+.menu-item-thumb{width:64px;height:64px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:pointer;transition:transform .2s;border:.5px solid var(--border)}
+.menu-item-thumb:hover{transform:scale(1.05)}
+.menu-item-thumb-placeholder{width:64px;height:64px;border-radius:8px;flex-shrink:0;background:var(--sand);display:flex;align-items:center;justify-content:center;font-size:24px;border:.5px solid var(--border)}
+/* Lightbox */
+#lightbox{display:none;position:fixed;inset:0;z-index:999;background:rgba(44,26,14,.85);align-items:center;justify-content:center;padding:20px}
+#lightbox.open{display:flex}
+#lightbox img{max-width:90vw;max-height:85vh;object-fit:contain;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+#lightbox-caption{position:fixed;bottom:24px;left:0;right:0;text-align:center;color:var(--kraft-light);font-size:15px;font-weight:500}
+#lightbox-close{position:fixed;top:20px;right:24px;background:none;border:none;color:var(--kraft-light);font-size:28px;cursor:pointer;padding:4px 10px;border-radius:8px;transition:background .2s}
+#lightbox-close:hover{background:rgba(255,255,255,.15)}
 .menu-item-name{font-size:14px;font-weight:600;color:var(--espresso);margin-bottom:4px}
 .menu-item-desc{font-size:12px;color:var(--crust);line-height:1.55}
 .menu-item-badge{font-size:9px;background:var(--sand);color:var(--bark);padding:2px 9px;border-radius:10px;margin-top:6px;display:inline-block;font-weight:600;letter-spacing:.3px}
@@ -401,6 +411,13 @@ footer{background:var(--espresso);padding:36px 5%;display:flex;justify-content:s
   </div>
 </section>
 
+<!-- LIGHTBOX -->
+<div id="lightbox" onclick="closeLightbox()">
+  <button id="lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightbox-img" src="" alt="">
+  <div id="lightbox-caption"></div>
+</div>
+
 <!-- FOOTER -->
 <footer>
   <div>
@@ -499,6 +516,10 @@ footer{background:var(--espresso);padding:36px 5%;display:flex;justify-content:s
               <select class="a-select" id="d-cat"></select>
             </div>
             <div class="a-field"><div class="a-label">Badge (etiqueta)</div><input class="a-input" id="d-badge" placeholder="Flauta fría, Porción..."></div>
+          </div>
+          <div class="a-field" style="margin-top:4px">
+            <div class="a-label">Foto del plato (opcional)</div>
+            <div id="d-img-wrap"></div>
           </div>
           <div style="display:flex;gap:10px;margin-top:8px">
             <button class="a-btn a-btn-primary" onclick="saveDish()">Guardar plato</button>
@@ -642,57 +663,53 @@ function loadSiteData() {
 function downloadIndexHtml() {
   setPublishBadge('publishing');
 
-  // Tanca tots els modals i panells
-  document.getElementById('admin-overlay').classList.remove('open');
-  document.getElementById('admin-login').classList.remove('open');
-  document.getElementById('mobile-menu').classList.remove('open');
-  document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open'));
+  // 1. Tanca TOTS els panells i modals
+  document.querySelectorAll('.modal-overlay, #admin-overlay, #admin-login, #mobile-menu')
+    .forEach(el => el.classList.remove('open'));
 
-  // Delay generós perquè el DOM s'actualitzi completament
+  // 2. Forcem display:none als overlays via style inline temporalment
+  const adminOverlay = document.getElementById('admin-overlay');
+  const adminLogin   = document.getElementById('admin-login');
+  adminOverlay.style.display = 'none';
+  adminLogin.style.display   = 'none';
+
+  // 3. Esperem que el DOM s'actualitzi
   setTimeout(() => {
     // Captura el HTML
     let updatedHtml = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
 
+    // Elimina style inline temporal que hem posat nosaltres
+    updatedHtml = updatedHtml.replace(' style="display: none;"', '');
+    updatedHtml = updatedHtml.replace(' style="display: none;"', '');
+
     // Elimina __SITE_DATA__ antic
     updatedHtml = updatedHtml.replace(/<script id="__site_data__">[\s\S]*?<\/script>\s*/g, '');
 
-    // Elimina la classe "open" de TOTS els elements que la tinguin
-    // Ho fem substituint totes les ocurrències de class="...open..."
-    updatedHtml = updatedHtml.replace(/(\bclass="[^"]*)\bopen\b([^"]*")/g, (match, pre, post) => {
-      return (pre + post).replace(/\s{2,}/g, ' ').replace(/class=" /g, 'class="').replace(/ "/g, '"');
-    });
+    // Elimina classe "open" de tots els elements
+    updatedHtml = updatedHtml.replace(/(\s)open(\s|")/g, '$2');
 
-    // Assegura que el display dels overlays sigui none (doble seguretat)
-    updatedHtml = updatedHtml.replace(
-      'id="admin-overlay"',
-      'id="admin-overlay" style="display:none"'
-    );
-    updatedHtml = updatedHtml.replace(
-      'id="admin-login"',
-      'id="admin-login" style="display:none"'
-    );
-
-    // Injecta les dades ABANS de tot el JavaScript — directament a <head>
-    // Usem </title> com a punt d'ancoratge fiable
-    const dataScript = '<script id="__site_data__">window.__SITE_DATA__ = '
+    // Injecta les dades just després de </title> — ABANS de qualsevol JS
+    const dataScript = '<script id="__site_data__">window.__SITE_DATA__='
       + JSON.stringify(siteData) + ';<\/script>';
-    updatedHtml = updatedHtml.replace('</title>', '</title>\n' + dataScript);
+    updatedHtml = updatedHtml.replace('</title>', '</title>' + dataScript);
 
     // Descarrega
-    const blob = new Blob([updatedHtml], {type: 'text/html;charset=utf-8'});
+    const blob = new Blob([updatedHtml], {type:'text/html;charset=utf-8'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'index.html';
     a.click();
     URL.revokeObjectURL(a.href);
 
-    // Torna a obrir l'admin
-    document.getElementById('admin-overlay').classList.add('open');
+    // Restaura l'admin
+    adminOverlay.style.display = '';
+    adminLogin.style.display   = '';
+    adminOverlay.classList.add('open');
 
     setPublishBadge('ok');
     setTimeout(()=>setPublishBadge('idle'), 4000);
     toast('index.html descarregat — puja\'l a GitHub ✓');
-  }, 150);
+  }, 200);
 }
 
 function setPublishBadge(state) {
@@ -715,12 +732,26 @@ function setPublishBadge(state) {
 function imageToBase64(file) {
   return new Promise((resolve, reject) => {
     if(!file) { reject('No file'); return; }
-    if(file.size > 2 * 1024 * 1024) {
-      alert(`La imatge "${file.name}" pesa ${(file.size/1024/1024).toFixed(1)}MB. Recomanem menys de 1MB. Comprimeix-la a squoosh.app i torna-ho a intentar.`);
+    if(file.size > 5 * 1024 * 1024) {
+      alert(`La imatge "${file.name}" pesa ${(file.size/1024/1024).toFixed(1)}MB. Màxim 5MB. Comprimeix-la a squoosh.app.`);
       reject('Too large'); return;
     }
     const reader = new FileReader();
-    reader.onload = e => resolve(e.target.result); // data:image/...;base64,...
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        // Comprimir amb canvas — màx 800px d'amplada, qualitat 0.75
+        const MAX = 800;
+        let w = img.width, h = img.height;
+        if(w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.75));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
@@ -977,7 +1008,6 @@ function renderSite() {
 
 function renderMenuPublic() {
   const cats = siteData.categories || [];
-  // Only show cats that have dishes
   const usedCats = cats.filter(c=>siteData.dishes.some(d=>d.cat===c.id));
   document.getElementById('menu-cats').innerHTML = usedCats.map((c,i)=>
     `<div class="menu-cat${i===0?' active':''}" onclick="showCat('${c.id}',this)">${c.label}</div>`
@@ -986,7 +1016,10 @@ function renderMenuPublic() {
     `<div id="cat-${c.id}" class="menu-section${i===0?' active':''}">
       ${siteData.dishes.filter(d=>d.cat===c.id).map(d=>
         `<div class="menu-item">
-          <div>
+          ${d.img
+            ? `<img class="menu-item-thumb" src="${d.img}" alt="${d.name}" onclick="openLightbox(this.src,this.alt)">`
+            : `<div class="menu-item-thumb-placeholder">🍽</div>`}
+          <div style="flex:1">
             <div class="menu-item-name">${d.name}</div>
             <div class="menu-item-desc">${d.desc}</div>
             ${d.badge?`<div class="menu-item-badge">${d.badge}</div>`:''}
@@ -996,6 +1029,18 @@ function renderMenuPublic() {
       ).join('')}
     </div>`
   ).join('');
+}
+
+function openLightbox(src, caption) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox-caption').textContent = caption;
+  document.getElementById('lightbox').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.body.style.overflow = '';
 }
 
 function showCat(cat, el) {
@@ -1294,6 +1339,7 @@ function openNewDish() {
   editingDishId = null;
   document.getElementById('dish-form-title').textContent = 'Nuevo plato';
   ['d-id','d-name','d-price','d-desc','d-badge'].forEach(id=>setVal(id,''));
+  document.getElementById('d-img-wrap').innerHTML = buildImgField('d-img', '', 'Foto del plato', 'Clica o arrossega una foto');
   document.getElementById('dish-form').style.display='block';
   document.getElementById('d-name').focus();
 }
@@ -1309,6 +1355,7 @@ function editDish(id) {
   setVal('d-desc', d.desc);
   setVal('d-badge', d.badge||'');
   document.getElementById('d-cat').value = d.cat;
+  document.getElementById('d-img-wrap').innerHTML = buildImgField('d-img', d.img||'', 'Foto del plato', 'Clica o arrossega una foto');
   document.getElementById('dish-form').style.display='block';
   document.getElementById('d-name').focus();
 }
@@ -1316,10 +1363,12 @@ function editDish(id) {
 function saveDish() {
   const name = v('d-name').trim();
   if(!name) { alert('El nombre es obligatorio'); return; }
+  const imgEl = document.getElementById('d-img');
   const dish = {
     id: editingDishId || 'd'+Date.now(),
     cat: document.getElementById('d-cat').value,
     name, price: v('d-price'), desc: v('d-desc'), badge: v('d-badge'),
+    img: imgEl ? imgEl.value.trim() : '',
   };
   if(editingDishId) {
     const idx = siteData.dishes.findIndex(x=>x.id===editingDishId);
