@@ -515,8 +515,10 @@ function loadSiteData(){
 }
 
 function saveSiteData(){
-  try{localStorage.setItem('lfb_site',JSON.stringify(siteData));}catch(e){}
-  gsSync('site','upsert',siteData);
+  // SEMPRE guardem al localStorage primer — independent del Google Sheets
+  try{localStorage.setItem('lfb_site',JSON.stringify(siteData));}catch(e){console.error('localStorage error:',e);}
+  // Intentem sincronitzar amb Google Sheets (pot fallar per CORS, no importa)
+  try{gsSync('site','upsert',siteData);}catch(e){}
 }
 
 // GS SYNC
@@ -908,11 +910,25 @@ async function handleImgUpload(input,fieldId){
   const file=input.files[0];if(!file)return;
   try{
     const b64=await imageToBase64(file);
-    document.getElementById(fieldId).value=b64;
+    // Actualitza el camp hidden amb el valor Base64
+    let hiddenInput = document.getElementById(fieldId);
+    if(!hiddenInput){
+      hiddenInput = document.createElement('input');
+      hiddenInput.type = 'hidden';
+      hiddenInput.id = fieldId;
+      input.closest('.img-field-wrap').appendChild(hiddenInput);
+    }
+    hiddenInput.value = b64;
+    // Mostra la previsualització
     const area=document.getElementById('area-'+fieldId);
     if(area){
-      const wrap=area.closest('.img-field-wrap');const label=wrap.querySelector('.a-label').outerHTML;
-      wrap.innerHTML=label+`<img src="${b64}" class="img-preview" id="prev-${fieldId}"><button class="img-clear-btn" onclick="clearImg('${fieldId}')">✕ Treure foto</button><input type="hidden" id="${fieldId}" value="${b64}">`;
+      const wrap=area.closest('.img-field-wrap');
+      const labelEl=wrap.querySelector('.a-label');
+      const labelHtml=labelEl?labelEl.outerHTML:'';
+      wrap.innerHTML=labelHtml+
+        `<img src="${b64}" class="img-preview" id="prev-${fieldId}">
+         <button class="img-clear-btn" onclick="clearImg('${fieldId}')">✕ Treure foto</button>
+         <input type="hidden" id="${fieldId}" value="${b64}">`;
     }
   }catch(e){if(e!=='Too large')console.error(e);}
 }
