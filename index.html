@@ -537,17 +537,41 @@ function setSyncBadge(state){
 // DOWNLOAD
 function downloadIndexHtml(){
   setPublishBadge('publishing');
+  // Agafa les dades del localStorage (les més recents)
   try{const saved=localStorage.getItem('lfb_site');if(saved)siteData=JSON.parse(saved);}catch(e){}
-  fetch(window.location.href)
-    .then(r=>r.text())
-    .then(src=>{
-      src=src.replace(/<script id="__site_data__">[\s\S]*?<\/script>\s*/g,'');
-      const ds='<script id="__site_data__">window.__SITE_DATA__='+JSON.stringify(siteData)+';<\/script>';
-      src=src.replace('</title>','</title>'+ds);
-      const blob=new Blob([src],{type:'text/html;charset=utf-8'});
-      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='index.html';a.click();URL.revokeObjectURL(a.href);
-      setPublishBadge('ok');setTimeout(()=>setPublishBadge('idle'),4000);toast('index.html descarregat ✓');
-    }).catch(err=>{setPublishBadge('err');toast('Error: '+err.message);});
+
+  // Tanca el panell admin temporalment per capturar HTML net
+  const overlay = document.getElementById('admin-overlay');
+  const login = document.getElementById('admin-login');
+  overlay.classList.remove('open');
+  login.classList.remove('open');
+
+  setTimeout(()=>{
+    // Construeix el nou __site_data__ amb les dades actuals
+    const newDataScript = '<script id="__site_data__">window.__SITE_DATA__='+JSON.stringify(siteData)+';<\/script>';
+
+    let newHtml = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+
+    // Substitueix el bloc __site_data__ existent
+    newHtml = newHtml.replace(/<script id="__site_data__">[\s\S]*?<\/script>/, newDataScript);
+    if(!newHtml.includes('__site_data__')) {
+      newHtml = newHtml.replace('</title>', '</title>\n' + newDataScript);
+    }
+
+    const blob = new Blob([newHtml], {type:'text/html;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'index.html';
+    a.click();
+    URL.revokeObjectURL(a.href);
+
+    // Torna a obrir el panell
+    overlay.classList.add('open');
+
+    setPublishBadge('ok');
+    setTimeout(()=>setPublishBadge('idle'),4000);
+    toast('index.html descarregat ✓');
+  }, 150);
 }
 function setPublishBadge(state){
   const el=document.getElementById('publish-badge');if(!el)return;
